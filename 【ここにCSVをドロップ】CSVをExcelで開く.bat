@@ -1,19 +1,29 @@
-﻿@echo off
+@echo off
 setlocal
-REM ---------------------------------------------------------
-REM  CSVを PowerShell スクリプトに渡して Excel で開く
-REM  - ExecutionPolicy Bypass で実行制限を回避
-REM  - 窓を隠して実行
-REM ---------------------------------------------------------
+title CSV to Excel Converter
 
-set "PS_FILE=%~dp0CsvToExcel_backend.ps1"
-
-if "%~1"=="" (
-    echo 【エラー】CSVファイルをこのアイコンにドロップしてください。
+REM --- Check if file is dropped ---
+if "%~1" == "" (
+    color 0C
+    echo [ERROR] No file detected.
+    echo Please drop a CSV file onto this icon.
     pause
     exit /b
 )
 
-powershell.exe -ExecutionPolicy Bypass -WindowStyle Hidden -File "%PS_FILE%" "%~1"
+REM --- Processing ---
+echo Processing: %~nx1...
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0CsvToExcel_backend.ps1" "%~1" >nul 2>&1
+
+REM --- Result Check ---
+if %errorlevel% equ 0 (
+    echo [SUCCESS] Opening Excel...
+    timeout /t 2 >nul
+) else (
+    color 0C
+    echo [ERROR] PowerShell script failed.
+    pause
+)
 
 exit /b
