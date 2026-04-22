@@ -3,7 +3,7 @@
     ---------------------------------------------------------
     ■ 目的
       - CSV の文字コードを自動判定（UTF-8 BOM / UTF-8 / UTF-16 / Shift-JIS）
-      - UTF-8 BOM に変換して Excel で開く（文字化けを完全に防止）
+      - UTF-8 BOM に変換してから Excel で開く（文字化け防止）
       - 一時ファイルに GUID を付与し衝突を防止
 #>
 
@@ -48,7 +48,7 @@ try {
     # テキストの読み込み
     $text = Detect-And-ReadText $CsvPath
 
-    # 一時ファイルのパス作成 (TEMPフォルダ + GUID)
+    # 一時ファイルのパス作成 (TEMPフォルダ + GUID：ランダム値)
     $tempDir = [System.IO.Path]::GetTempPath()
     $guid = [guid]::NewGuid().ToString().Substring(0,8)
     $baseName = [System.IO.Path]::GetFileNameWithoutExtension($CsvPath)
