@@ -8,15 +8,29 @@
     - Import all columns as text.
     - Avoid clipboard usage.
     - Write logs for troubleshooting.
+    - Limit file size to reduce memory exhaustion risk.
+
+    Notes:
+    - This script creates a new Excel workbook.
+    - The original CSV file is not modified.
 #>
 
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true)]
+    [ValidateNotNullOrEmpty()]
     [string]$CsvPath,
 
     [Parameter(Mandatory = $false)]
-    [string]$LogPath
+    [ValidateNotNullOrEmpty()]
+    [string]$LogPath,
+
+    [Parameter(Mandatory = $false)]
+    [ValidateRange(1, 500)]
+    [int]$MaxFileSizeMB = 50,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$SanitizeFormulaLikeText
 )
 
 Set-StrictMode -Version Latest
@@ -31,11 +45,16 @@ function Write-Log {
         [string]$Message
     )
 
-    $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $line = "[{0}] {1}" -f $timestamp, $Message
+    try {
+        $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+        $line = "[{0}] {1}" -f $timestamp, $Message
 
-    if ($LogPath) {
-        Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
+        if ($script:LogPath) {
+            Add-Content -LiteralPath $script:LogPath -Value $line -Encoding UTF8
+        }
+    }
+    catch {
+        # Logging failure must not stop the main process.
     }
 }
 
@@ -147,6 +166,26 @@ function Read-CsvRows {
     }
 }
 
+function Convert-ToSafeExcelText {
+    param(
+        [Parameter(Mandatory = $false)]
+        [AllowNull()]
+        [object]$Value
+    )
+
+    if ($null -eq $Value) {
+        return ""
+    }
+
+    $text = [string]$Value
+
+    if ($SanitizeFormulaLikeText -and $text -match '^[=+\-@]') {
+        return "'" + $text
+    }
+
+    return $text
+}
+
 function Release-ComObjectSafely {
     param(
         [Parameter(Mandatory = $false)]
@@ -169,6 +208,7 @@ $workbook = $null
 $worksheets = $null
 $worksheet = $null
 $range = $null
+$columns = $null
 $openedSuccessfully = $false
 
 try {
@@ -176,22 +216,33 @@ try {
         $LogPath = Join-Path -Path $env:TEMP -ChildPath ("CsvToExcel_{0}.log" -f (Get-Date -Format "yyyyMMdd_HHmmss"))
     }
 
+    $script:LogPath = $LogPath
+
     Write-Log "===== Start CSV to Excel Converter ====="
     Write-Log ("CSV path: {0}" -f $CsvPath)
     Write-Log ("Log path: {0}" -f $LogPath)
+    Write-Log ("Max file size: {0} MB" -f $MaxFileSizeMB)
+    Write-Log ("Sanitize formula-like text: {0}" -f [bool]$SanitizeFormulaLikeText)
 
     if (-not (Test-Path -LiteralPath $CsvPath -PathType Leaf)) {
         throw "The specified CSV file was not found."
     }
 
-    $extension = [System.IO.Path]::GetExtension($CsvPath)
+    $resolvedCsvPath = (Resolve-Path -LiteralPath $CsvPath).Path
+    $extension = [System.IO.Path]::GetExtension($resolvedCsvPath)
 
     if ($extension.ToLowerInvariant() -ne ".csv") {
         throw "Only CSV files are supported."
     }
 
-    $resolvedCsvPath = (Resolve-Path -LiteralPath $CsvPath).Path
+    $fileInfo = Get-Item -LiteralPath $resolvedCsvPath
+
+    if ($fileInfo.Length -gt ($MaxFileSizeMB * 1MB)) {
+        throw ("CSV file is too large. File size must be {0} MB or less." -f $MaxFileSizeMB)
+    }
+
     Write-Log ("Resolved CSV path: {0}" -f $resolvedCsvPath)
+    Write-Log ("CSV file size: {0} bytes" -f $fileInfo.Length)
 
     $encodingInfo = Get-CsvEncodingInfo -Path $resolvedCsvPath
     Write-Log ("Detected encoding: {0}" -f $encodingInfo.Name)
@@ -219,8 +270,8 @@ try {
         $fields = $csvData.Rows[$r]
 
         for ($c = 0; $c -lt $maxColumns; $c++) {
-            if ($c -lt $fields.Count -and $null -ne $fields[$c]) {
-                $data[$r, $c] = [string]$fields[$c]
+            if ($c -lt $fields.Count) {
+                $data[$r, $c] = Convert-ToSafeExcelText -Value $fields[$c]
             }
             else {
                 $data[$r, $c] = ""
@@ -258,7 +309,10 @@ try {
     $range.NumberFormat = "@"
     $range.Value2 = $data
 
-    $worksheet.Columns.AutoFit() | Out-Null
+    Write-Log "Auto-fitting used columns."
+
+    $columns = $range.EntireColumn
+    $columns.AutoFit() | Out-Null
 
     $excel.DisplayAlerts = $true
     $excel.Visible = $true
@@ -271,6 +325,7 @@ try {
 }
 catch {
     $errorMessage = $_.Exception.Message
+
     Write-Log ("ERROR: {0}" -f $errorMessage)
     Write-Log "===== End CSV to Excel Converter: Failed ====="
 
@@ -285,6 +340,7 @@ catch {
 
     try {
         if ($null -ne $excel -and -not $openedSuccessfully) {
+            $excel.DisplayAlerts = $true
             $excel.Quit()
         }
     }
@@ -297,6 +353,7 @@ catch {
     exit 1
 }
 finally {
+    Release-ComObjectSafely -ComObject $columns
     Release-ComObjectSafely -ComObject $range
     Release-ComObjectSafely -ComObject $worksheet
     Release-ComObjectSafely -ComObject $worksheets
@@ -304,6 +361,7 @@ finally {
     Release-ComObjectSafely -ComObject $workbooks
     Release-ComObjectSafely -ComObject $excel
 
+    $columns = $null
     $range = $null
     $worksheet = $null
     $worksheets = $null

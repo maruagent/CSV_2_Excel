@@ -46,7 +46,7 @@ echo Processing: "%~nx1"
 echo Log file: "%LOG%"
 echo.
 
-powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy Bypass -File "%SCRIPT%" -CsvPath "%~f1" -LogPath "%LOG%"
+powershell.exe -NoLogo -NoProfile -STA -ExecutionPolicy RemoteSigned -File "%SCRIPT%" -CsvPath "%~f1" -LogPath "%LOG%"
 
 if errorlevel 1 (
     color 0C
