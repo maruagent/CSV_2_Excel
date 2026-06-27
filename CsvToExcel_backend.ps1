@@ -186,7 +186,7 @@ function Convert-ToSafeExcelText {
     return $text
 }
 
-function Release-ComObjectSafely {
+function Remove-ComObjectSafely {
     param(
         [Parameter(Mandatory = $false)]
         [object]$ComObject
@@ -353,13 +353,13 @@ catch {
     exit 1
 }
 finally {
-    Release-ComObjectSafely -ComObject $columns
-    Release-ComObjectSafely -ComObject $range
-    Release-ComObjectSafely -ComObject $worksheet
-    Release-ComObjectSafely -ComObject $worksheets
-    Release-ComObjectSafely -ComObject $workbook
-    Release-ComObjectSafely -ComObject $workbooks
-    Release-ComObjectSafely -ComObject $excel
+    Remove-ComObjectSafely -ComObject $columns
+    Remove-ComObjectSafely -ComObject $range
+    Remove-ComObjectSafely -ComObject $worksheet
+    Remove-ComObjectSafely -ComObject $worksheets
+    Remove-ComObjectSafely -ComObject $workbook
+    Remove-ComObjectSafely -ComObject $workbooks
+    Remove-ComObjectSafely -ComObject $excel
 
     $columns = $null
     $range = $null
